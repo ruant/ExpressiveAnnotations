@@ -190,7 +190,7 @@ var
             });
             this.addMethod('IsEmail', function(str) {
                 // taken from HTML5 specification: http://www.w3.org/TR/html5/forms.html#e-mail-state-(type=email)
-                return /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(str);
+                return /^(?=[a-zA-Z0-9][a-zA-Z0-9@._%+-]{1,253}+$)[a-zA-Z0-9._%+-]{1,64}+@(?:(?=[a-zA-Z0-9-]{1,63}+\.)[a-zA-Z0-9]++(?:-[a-zA-Z0-9]++)*+\.){1,8}+[a-zA-Z]{2,63}+$/.test(str);
             });
             this.addMethod('IsUrl', function(str) {
                 // contributed by Diego Perini: https://gist.github.com/dperini/729294 (https://mathiasbynens.be/demo/url-regex)
