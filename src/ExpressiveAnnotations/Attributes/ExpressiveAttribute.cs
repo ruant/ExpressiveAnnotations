@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ExpressiveAnnotations.Analysis;
+using ExpressiveAnnotations.Functions;
 
 namespace ExpressiveAnnotations.Attributes
 {
@@ -49,7 +50,7 @@ namespace ExpressiveAnnotations.Attributes
                 throw new ArgumentNullException(nameof(expression), "Expression not provided.");
 
             Parser = new Parser();
-            Parser.RegisterMethods();
+            Parser.RegisterToolchain();
 
             Expression = expression;
             CachedValidationFuncs = new Dictionary<Type, Func<object, bool>>();
@@ -64,6 +65,11 @@ namespace ExpressiveAnnotations.Attributes
         ///     Gets the parser.
         /// </summary>        
         protected Parser Parser { get; private set; }
+
+        /// <summary>
+        ///     Gets the annotated property type.
+        /// </summary>        
+        protected Type PropertyType { get; private set; }
 
         /// <summary>
         ///     Gets the logical expression based on which specified condition is computed.
@@ -152,11 +158,11 @@ namespace ExpressiveAnnotations.Attributes
         {
             if (force)
             {
-                CachedValidationFuncs[validationContextType] = Parser.Parse(validationContextType, Expression);
+                CachedValidationFuncs[validationContextType] = Parser.Parse<bool>(validationContextType, Expression);
                 return;
             }
             if (!CachedValidationFuncs.ContainsKey(validationContextType))
-                CachedValidationFuncs[validationContextType] = Parser.Parse(validationContextType, Expression);
+                CachedValidationFuncs[validationContextType] = Parser.Parse<bool>(validationContextType, Expression);
         }
 
         /// <summary>
@@ -262,19 +268,40 @@ namespace ExpressiveAnnotations.Attributes
         /// <exception cref="System.ComponentModel.DataAnnotations.ValidationException"></exception>
         protected override ValidationResult IsValid(object value, ValidationContext validationContext)
         {
-            Debug.Assert(validationContext != null);
+            Debug.Assert(validationContext != null);            
 
-            validationContext.MemberName = validationContext.MemberName // in case member name is a null (e.g. like in older MVC versions) try workaround
-                                           ?? validationContext.ObjectType.GetMemberNameByDisplayName(validationContext.DisplayName);
             try
             {
+                AdjustMemberName(validationContext);
                 return IsValidInternal(value, validationContext);
             }
             catch (Exception e)
             {
                 throw new ValidationException(
-                    $"{GetType().Name}: validation applied to {validationContext.MemberName} field failed.", e);
+                    $"{GetType().Name}: validation applied to {validationContext.MemberName ?? "<member unknown>"} field failed.", e);
             }
+        }
+
+        private void AdjustMemberName(ValidationContext validationContext) // fixes for: MVC <= 4 (MemberName is not provided), WebAPI 2 (MemberName states for display name)
+        {
+            PropertyType = null; // reset value
+            if (validationContext.MemberName == null && validationContext.DisplayName == null)
+                return;
+
+            validationContext.MemberName = validationContext.MemberName ?? validationContext.DisplayName;
+            var prop = validationContext.ObjectType.GetProperty(validationContext.MemberName);
+            if (prop == null)
+            {
+                prop = validationContext.ObjectType.GetPropertyByDisplayName(validationContext.MemberName);
+                if (prop == null)
+                {
+                    validationContext.MemberName = null;
+                    return;
+                }
+
+                validationContext.MemberName = prop.Name;
+            }
+            PropertyType = prop.PropertyType;
         }
 
         private string PreformatMessage(string displayName, string expression, out IList<FormatItem> items)

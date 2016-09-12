@@ -1,37 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using ExpressiveAnnotations.Attributes;
 using Xunit;
 
 namespace ExpressiveAnnotations.MvcWebSample.UITests
 {
-    public static class Helper
-    {
-        public static IEnumerable<ExpressiveAttribute> CompileExpressiveAttributes(this Assembly assembly)
-        {
-            return assembly.GetTypes().SelectMany(t => t.CompileExpressiveAttributes());
-        }
-
-        public static IEnumerable<ExpressiveAttribute> CompileExpressiveAttributes(this Type type)
-        {
-            var properties = type.GetProperties()
-                .Where(p => Attribute.IsDefined(p, typeof(ExpressiveAttribute)));
-
-            var attributes = new List<ExpressiveAttribute>();
-            foreach (var prop in properties)
-            {
-                var attribs = prop.GetCustomAttributes<ExpressiveAttribute>().ToList();
-                attribs.ForEach(x => x.Compile(prop.DeclaringType));
-                attributes.AddRange(attribs);
-            }
-            return attributes;
-        }
-    }
-
     public class AttributesCompilationTest
     {
         private static string GetAssemblyLocation(string assemblyName) // looks inside bin folder of sample project
@@ -54,9 +29,11 @@ namespace ExpressiveAnnotations.MvcWebSample.UITests
                 AppDomain.CurrentDomain.AssemblyResolve += LoadAssembly;
                 var assemblyPath = GetAssemblyLocation("ExpressiveAnnotations.MvcWebSample.dll");
                 var assembly = Assembly.LoadFrom(assemblyPath);
+
+                assembly.GetType("ExpressiveAnnotations.MvcWebSample.Misc.CustomToolchain").GetMethod("Register").Invoke(null, null); // register your custom methods if you defined any
                 var attribs = assembly.CompileExpressiveAttributes();
 
-                Assert.Equal(28, attribs.Count());
+                Assert.Equal(30, attribs.Count());
             }
             catch (ReflectionTypeLoadException e)
             {

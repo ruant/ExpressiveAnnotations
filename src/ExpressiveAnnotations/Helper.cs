@@ -32,46 +32,6 @@ namespace ExpressiveAnnotations
 
     internal static class Helper
     {
-        public static void MakeTypesCompatible(Expression e1, Expression e2, out Expression oute1, out Expression oute2)
-        {
-            Debug.Assert(e1 != null);
-            Debug.Assert(e2 != null);
-
-            oute1 = e1;
-            oute2 = e2;
-
-            if (oute1.Type.IsEnum && oute2.Type.IsEnum && oute1.Type.UnderlyingType() != oute2.Type.UnderlyingType())
-                return;
-
-            // promote numeric values to double - do all computations with higher precision (to be compatible with JavaScript, e.g. notation 1/2, should give 0.5 double not 0 int)
-            if (oute1.Type != typeof (double) && oute1.Type != typeof (double?) && oute1.Type.IsNumeric())
-                oute1 = oute1.Type.IsNullable()
-                    ? Expression.Convert(oute1, typeof (double?))
-                    : Expression.Convert(oute1, typeof (double));
-            if (oute2.Type != typeof (double) && oute2.Type != typeof (double?) && oute2.Type.IsNumeric())
-                oute2 = oute2.Type.IsNullable()
-                    ? Expression.Convert(oute2, typeof (double?))
-                    : Expression.Convert(oute2, typeof (double));
-
-            // non-nullable operand is converted to nullable if necessary, and the lifted-to-nullable form of the comparison is used (C# rule, which is currently not followed by expression trees)
-            if (oute1.Type.UnderlyingType() == oute2.Type.UnderlyingType())
-            {
-                if (oute1.Type.IsNullable() && !oute2.Type.IsNullable())
-                    oute2 = Expression.Convert(oute2, oute1.Type);
-                else if (!oute1.Type.IsNullable() && oute2.Type.IsNullable())
-                    oute1 = Expression.Convert(oute1, oute2.Type);
-            }
-
-            // make DateTime and TimeSpan compatible (also do not care when first argument is TimeSpan and second DateTime because it is not allowed)
-            if (oute1.Type.IsDateTime() && oute2.Type.IsTimeSpan())
-            {
-                if (oute1.Type.IsNullable() && !oute2.Type.IsNullable())
-                    oute2 = Expression.Convert(oute2, typeof (TimeSpan?));
-                else if (!oute1.Type.IsNullable() && oute2.Type.IsNullable())
-                    oute1 = Expression.Convert(oute1, typeof (DateTime?));
-            }
-        }
-
         public static object ExtractValue(object source, string property)
         {
             Debug.Assert(source != null);
@@ -148,7 +108,7 @@ namespace ExpressiveAnnotations
         {
             Debug.Assert(type != null);
 
-            return type == typeof(TimeSpan) || (type.IsNullable() && Nullable.GetUnderlyingType(type).IsTimeSpan());
+            return type == typeof (TimeSpan) || (type.IsNullable() && Nullable.GetUnderlyingType(type).IsTimeSpan());
         }
 
         public static bool IsBool(this Type type)
@@ -176,6 +136,13 @@ namespace ExpressiveAnnotations
         {
             Debug.Assert(type != null);
 
+            return type.IsIntegralNumeric() || type.IsFloatingPointNumeric();
+        }
+
+        public static bool IsIntegralNumeric(this Type type)
+        {
+            Debug.Assert(type != null);
+
             var numericTypes = new HashSet<TypeCode>
             {
                 TypeCode.SByte,     //sbyte
@@ -185,13 +152,64 @@ namespace ExpressiveAnnotations
                 TypeCode.Int32,     //int
                 TypeCode.UInt32,    //uint
                 TypeCode.Int64,     //long
-                TypeCode.UInt64,    //ulong
-                TypeCode.Single,    //float
-                TypeCode.Double,    //double
-                TypeCode.Decimal    //decimal
+                TypeCode.UInt64     //ulong
             };
             return numericTypes.Contains(Type.GetTypeCode(type)) ||
                    type.IsNullable() && Nullable.GetUnderlyingType(type).IsNumeric();
+        }
+
+        public static bool IsFloatingPointNumeric(this Type type)
+        {
+            Debug.Assert(type != null);
+
+            var numericTypes = new HashSet<TypeCode>
+            {
+                TypeCode.Single,    //float (floating binary point type, e.g. 1001.101)
+                TypeCode.Double,    //double (floating binary point type, e.g. 1001.101)
+                TypeCode.Decimal    //decimal (floating decimal point type, e.g. 1234.567)
+            };
+            return numericTypes.Contains(Type.GetTypeCode(type)) ||
+                   type.IsNullable() && Nullable.GetUnderlyingType(type).IsNumeric();
+        }
+
+        public static int HasHigherPrecisionThan(this Type type, Type other) // < 0 - lower precision, 0 - the same, > 0 - higher
+        {
+            Debug.Assert(type != null);
+            Debug.Assert(other != null);
+            Debug.Assert(type.IsIntegralNumeric());
+            Debug.Assert(other.IsIntegralNumeric());
+
+            var orderedTypes = new List<Type>
+            {
+                typeof (sbyte),
+                typeof (byte),
+                typeof (short),
+                typeof (ushort),
+                typeof (int),
+                typeof (uint),
+                typeof (long),
+                typeof (ulong)
+            };
+            return orderedTypes.IndexOf(type.UnderlyingType()) - orderedTypes.IndexOf(other.UnderlyingType());
+        }
+
+        public static Type GetNullableEquivalent(this Type type)
+        {
+            Debug.Assert(type != null);
+            Debug.Assert(type.IsIntegralNumeric());
+
+            var map = new Dictionary<Type, Type>
+            {
+                {typeof (sbyte), typeof (sbyte?)},
+                {typeof (byte), typeof (byte?)},
+                {typeof (short), typeof (short?)},
+                {typeof (ushort), typeof (ushort?)},
+                {typeof (int), typeof (int?)},
+                {typeof (uint), typeof (uint?)},
+                {typeof (long), typeof (long?)},
+                {typeof (ulong), typeof (ulong?)}
+            };
+            return map[type];
         }
 
         public static bool IsNullable(this Type type)
@@ -250,41 +268,41 @@ namespace ExpressiveAnnotations
             }
         }
 
-        public static string GetMemberNameByDisplayName(this Type type, string displayName)
+        public static PropertyInfo GetPropertyByDisplayName(this Type type, string displayName)
         {
             Debug.Assert(type != null);
             Debug.Assert(displayName != null);
 
-            return type.GetMemberNameFromDisplayAttribute(displayName) ??
-                   type.GetMemberNameFromDisplayNameAttribute(displayName);
+            return type.GetPropertyByDisplayAttribute(displayName) ??
+                   type.GetPropertyByDisplayNameAttribute(displayName);
         }
 
-        public static string GetMemberNameFromDisplayAttribute(this Type type, string displayName)
+        public static PropertyInfo GetPropertyByDisplayAttribute(this Type type, string displayName)
         {
             Debug.Assert(type != null);
             Debug.Assert(displayName != null);
 
-            // get member name from Display attribute (if such an attribute exists) based on display name
+            // get member name through Display attribute (if such an attribute exists) based on display name
             var props = type.GetProperties()
                 .Where(p => p.GetAttributes<DisplayAttribute>().Any(a => a.GetName() == displayName))
-                .Select(p => p.Name).ToList();
+                .ToList();
 
             // if there is an ambiguity, return nothing
-            return props.Count == 1 ? props.SingleOrDefault() : null;
+            return props.Count == 1 ? props.Single() : null;
         }
 
-        public static string GetMemberNameFromDisplayNameAttribute(this Type type, string displayName)
+        public static PropertyInfo GetPropertyByDisplayNameAttribute(this Type type, string displayName)
         {
             Debug.Assert(type != null);
             Debug.Assert(displayName != null);
 
-            // get member name from DisplayName attribute (if such an attribute exists) based on display name
+            // get member name through DisplayName attribute (if such an attribute exists) based on display name
             var props = type.GetProperties()
                 .Where(p => p.GetAttributes<DisplayNameAttribute>().Any(a => a.DisplayName == displayName))
-                .Select(p => p.Name).ToList();
+                .ToList();
 
             // if there is an ambiguity, return nothing
-            return props.Count == 1 ? props.SingleOrDefault() : null;
+            return props.Count == 1 ? props.Single() : null;
         }
 
         public static IEnumerable<T> GetAttributes<T>(this MemberInfo element) where T : Attribute
@@ -353,7 +371,7 @@ namespace ExpressiveAnnotations
             var lines = input.Split('\n');
             Debug.Assert(lines.Length > index);
 
-            return lines.Skip(index).First().TrimEnd();
+            return lines.Skip(index).First();
         }
 
         public static string ToOrdinal(this int num)
@@ -400,6 +418,11 @@ namespace ExpressiveAnnotations
             return suffix.Length == 0
                 ? $"Parse error on line {location.Line}, last column: {message}"
                 : $"Parse error on line {location.Line}, column {location.Column}:{suffix.Indicator(100)}{message}";
+        }
+
+        public static int Position(this Location location, string expression)
+        {
+            return Enumerable.Range(0, location.Line - 1).Sum(i => expression.TakeLine(i).Length + 1) + location.Column - 1;
         }
 
         public static string Indicator(this string input, int max)

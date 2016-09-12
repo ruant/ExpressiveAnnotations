@@ -181,9 +181,7 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
                 "AssertThatValidator: collecting of client validation rules for Value field failed.",
                 e.Message);
             Assert.IsType<ApplicationException>(e.InnerException);
-            Assert.Equal(
-                "HttpContext not available.",
-                e.InnerException.Message);
+            Assert.Equal("HttpContext not available.", e.InnerException.Message);
 
             HttpContext.Current = context;
             e = Assert.Throws<ValidationException>(() =>
@@ -197,9 +195,7 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
                 "RequiredIfValidator: collecting of client validation rules for Value field failed.",
                 e.Message);
             Assert.IsType<ApplicationException>(e.InnerException);
-            Assert.Equal(
-                "HttpContext not available.",
-                e.InnerException.Message);
+            Assert.Equal("HttpContext not available.", e.InnerException.Message);
         }
 
         [Fact]
@@ -219,17 +215,32 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
                 "AssertThatValidator: validation applied to Value field failed.",
                 e.Message);
             Assert.IsType<ApplicationException>(e.InnerException);
-            Assert.Equal(
-                "HttpContext not available.",
-                e.InnerException.Message);
+            Assert.Equal("HttpContext not available.", e.InnerException.Message);
 
             e = Assert.Throws<ValidationException>(() => new RequiredIfValidator(metadata, controllerContext, requirAttribute));
             Assert.Equal(
                 "RequiredIfValidator: validation applied to Value field failed.",
                 e.Message);
             Assert.IsType<ApplicationException>(e.InnerException);
+            Assert.Equal("HttpContext not available.", e.InnerException.Message);
+        }
+
+        [Fact]
+        public void throw_when_requirement_is_applied_to_field_of_non_nullable_value_type()
+        {
+            var model = new MisusedRequirementModel();
+            var requirAttribute = new RequiredIfAttribute("true");
+
+            var metadata = GetModelMetadata(model, m => m.Value);
+            var controllerContext = GetControllerContext();
+
+            var e = Assert.Throws<ValidationException>(() => new RequiredIfValidator(metadata, controllerContext, requirAttribute));
             Assert.Equal(
-                "HttpContext not available.",
+                "RequiredIfValidator: validation applied to Value field failed.",
+                e.Message);
+            Assert.IsType<InvalidOperationException>(e.InnerException);
+            Assert.Equal(
+                "RequiredIfAttribute has no effect when applied to a field of non-nullable value type 'System.Int32'. Use nullable 'System.Int32?' version instead.",
                 e.InnerException.Message);
         }
 
@@ -277,24 +288,24 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
             var metadata = GetModelMetadata(model, m => m.Array);
             var controllerContext = GetControllerContext();
 
-            const string expression = "Value > 0 && Status == ValidatorsTest.State.High && InsensString == NInsensString";
+            const string expression = "Value > 0 && Status == ValidatorsTest.State.High && SubModel.InsensString == NInsensString";
 
             var assert = new AssertThatValidator(metadata, controllerContext, new AssertThatAttribute(expression));
             var assertRule = assert.GetClientValidationRules().Single();
 
-            Assert.Equal("{\"Value\":\"numeric\",\"Status\":\"numeric\",\"InsensString\":\"stringinsens\",\"NInsensString\":\"stringinsens\"}", (string)assertRule.ValidationParameters["fieldsmap"], false);
-            Assert.Equal("{\"ValidatorsTest.State.High\":0}", (string)assertRule.ValidationParameters["constsmap"], false);
-            Assert.Equal("{\"Array\":\"arrayparser\"}", (string)assertRule.ValidationParameters["parsersmap"], false);
-            Assert.Equal("\"Value > 0 && Status == ValidatorsTest.State.High && InsensString == NInsensString\"", (string)assertRule.ValidationParameters["expression"], false);
+            Assert.Equal("{\"Value\":\"numeric\",\"Status\":\"numeric\",\"SubModel.InsensString\":\"stringinsens\",\"NInsensString\":\"stringinsens\"}", (string) assertRule.ValidationParameters["fieldsmap"], false);
+            Assert.Equal("{\"ValidatorsTest.State.High\":0}", (string) assertRule.ValidationParameters["constsmap"], false);
+            Assert.Equal("{\"SubModel.InsensString\":\"stringparser\",\"Array\":\"arrayparser\"}", (string) assertRule.ValidationParameters["parsersmap"], false);
+            Assert.Equal("\"Value > 0 && Status == ValidatorsTest.State.High && SubModel.InsensString == NInsensString\"", (string) assertRule.ValidationParameters["expression"], false);
 
             var requir = new RequiredIfValidator(metadata, controllerContext, new RequiredIfAttribute(expression));
             var requirRule = requir.GetClientValidationRules().Single();
 
-            Assert.Equal("{\"Value\":\"numeric\",\"Status\":\"numeric\",\"InsensString\":\"stringinsens\",\"NInsensString\":\"stringinsens\"}", (string)requirRule.ValidationParameters["fieldsmap"], false);
-            Assert.Equal("{\"ValidatorsTest.State.High\":0}", (string)requirRule.ValidationParameters["constsmap"], false);
-            Assert.Equal("{\"Array\":\"arrayparser\"}", (string)assertRule.ValidationParameters["parsersmap"], false);
-            Assert.Equal("false", (string)requirRule.ValidationParameters["allowempty"], false);
-            Assert.Equal("\"Value > 0 && Status == ValidatorsTest.State.High && InsensString == NInsensString\"", (string)requirRule.ValidationParameters["expression"], false);
+            Assert.Equal("{\"Value\":\"numeric\",\"Status\":\"numeric\",\"SubModel.InsensString\":\"stringinsens\",\"NInsensString\":\"stringinsens\"}", (string) requirRule.ValidationParameters["fieldsmap"], false);
+            Assert.Equal("{\"ValidatorsTest.State.High\":0}", (string) requirRule.ValidationParameters["constsmap"], false);
+            Assert.Equal("{\"SubModel.InsensString\":\"stringparser\",\"Array\":\"arrayparser\"}", (string) assertRule.ValidationParameters["parsersmap"], false);
+            Assert.Equal("false", (string) requirRule.ValidationParameters["allowempty"], false);
+            Assert.Equal("\"Value > 0 && Status == ValidatorsTest.State.High && SubModel.InsensString == NInsensString\"", (string) requirRule.ValidationParameters["expression"], false);
 
             JsonConvert.DefaultSettings = settings; // reset settings to original state
         }
@@ -480,10 +491,12 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
 
         public class Model
         {
-            public int Value { get; set; }
+            public int? Value { get; set; }
             [ValueParser("arrayparser")]
             public int[] Array { get; set; }
             public State Status { get; set; }
+            public Model SubModel { get; set; }
+            [ValueParser("stringparser")]
             public StringInsens InsensString { get; set; }
             public StringInsens? NInsensString { get; set; }
         }
@@ -495,6 +508,12 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Tests
 
             [Display(ResourceType = typeof (Resources), Name = "Lang")]
             public string Lang { get; set; }
+        }
+
+        private class MisusedRequirementModel
+        {
+            [RequiredIf("true")]
+            public int Value { get; set; }
         }
 
         public struct StringInsens

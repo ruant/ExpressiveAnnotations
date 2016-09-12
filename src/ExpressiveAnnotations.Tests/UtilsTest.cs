@@ -117,14 +117,14 @@ namespace ExpressiveAnnotations.Tests
         public void verify_display_names_extraction_from_given_type()
         {
             // name provided explicitly
-            Assert.Equal("Value_1", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof(Model), "Value1"));
-            Assert.Equal("Value_1", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof(Model), "Internal.Value1"));
+            Assert.Equal("Value_1", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "Value1"));
+            Assert.Equal("Value_1", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "Internal.Value1"));
             
             // name provided in resources
-            Assert.Equal("_{Value2}_", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof(Model), "Value2"));
-            Assert.Equal("_{Value2}_", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof(Model), "Internal.Value2"));
+            Assert.Equal("_{Value2}_", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "Value2"));
+            Assert.Equal("_{Value2}_", ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "Internal.Value2"));
 
-            var e = Assert.Throws<ArgumentException>(() => ExpressiveAnnotations.Helper.ExtractDisplayName(typeof(Model), "internal"));
+            var e = Assert.Throws<ArgumentException>(() => ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "internal"));
             Assert.Equal("Display name extraction interrupted. Field internal not found.\r\nParameter name: internal", e.Message);
 
             e = Assert.Throws<ArgumentException>(() => ExpressiveAnnotations.Helper.ExtractDisplayName(typeof (Model), "Internal.Value123"));
@@ -137,9 +137,9 @@ namespace ExpressiveAnnotations.Tests
         [Fact]
         public void verify_fields_names_extraction_based_on_their_display_names() // Display attribute or DisplayName attribute used as a workaround for field name extraction in older versions of MVC where MemberName was not provided in ValidationContext
         {
-            Assert.Equal("Value1", typeof (Model).GetMemberNameByDisplayName("Value_1"));
-            Assert.Equal("Value2", typeof (Model).GetMemberNameByDisplayName("_{Value2}_"));
-            Assert.Equal("Internal", typeof (Model).GetMemberNameByDisplayName("internal"));
+            Assert.Equal("Value1", typeof (Model).GetPropertyByDisplayName("Value_1").Name);
+            Assert.Equal("Value2", typeof (Model).GetPropertyByDisplayName("_{Value2}_").Name);
+            Assert.Equal("Internal", typeof (Model).GetPropertyByDisplayName("internal").Name);
         }
 
         [Fact]
@@ -158,13 +158,19 @@ namespace ExpressiveAnnotations.Tests
         }
 
         public static IEnumerable<object[]> ErrorData => new[]
-        {
+        {            
+            new object[] {new Location(1,1), "\r", @"
+" },
+            new object[] {new Location(1,1), "\r", "\r\n" },
             new object[] {new Location(1,1), "abcde", "abcde" },
             new object[] {new Location(1,3), "cde", "abcde" },
             new object[] {new Location(1,5), "e", "abcde" },
             new object[] {new Location(2,1), "abcde", "12345\r\nabcde" },
             new object[] {new Location(2,3), "cde", "12345\r\nabcde" },
             new object[] {new Location(2,5), "e", "12345\r\nabcde" },
+            new object[] {new Location(1,6), "  \r", "abcde  \r\nabcde" },
+            new object[] {new Location(1,7), " \r", "abcde  \r\nabcde" },
+            new object[] {new Location(1,8), "\r", "abcde  \r\nabcde" },
             new object[] {new Location(1,1), new string('a', 100), new string('a', 100) },
             new object[] {new Location(1,1), new string('a', 100), new string('a', 101) } // max 100 chars of expression is displayed
         };
@@ -181,9 +187,8 @@ namespace ExpressiveAnnotations.Tests
         }
 
         public static IEnumerable<object[]> BoundaryErrorData => new[]
-{
+        {
             new object[] {new Location(1,6), "abcde" },
-            new object[] {new Location(1,6), "12345    \r\nabcde" },
             new object[] {new Location(2,6), "12345\r\nabcde" }
         };
 
@@ -205,12 +210,19 @@ namespace ExpressiveAnnotations.Tests
             Assert.Equal("Column number should be positive.\r\nParameter name: column", e.Message);
         }
 
+        [Fact]
+        public void print_token_for_debug_purposes()
+        {
+            var token = new Token(TokenType.FLOAT, 1.0, "1.0", new Location(1, 2));
+            Assert.Equal(@"""1.0"" FLOAT (1, 2)", token.ToString());
+        }
+
         private class Model
         {
             [Display(Name = "Value_1")]
             public int? Value1 { get; set; }
 
-            [Display(ResourceType = typeof(Resources), Name = "Value2")]
+            [Display(ResourceType = typeof (Resources), Name = "Value2")]
             public int? Value2 { get; set; }
 
             public string NoName { get; set; }

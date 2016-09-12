@@ -2,23 +2,39 @@
  * Copyright (c) 2014 Jarosław Waliszko
  * Licensed MIT: http://opensource.org/licenses/MIT */
 
+using System;
 using System.ComponentModel.DataAnnotations;
 
 namespace ExpressiveAnnotations.Attributes
 {
     /// <summary>
-    ///     Validation attribute which indicates that annotated field is required when computed result of given logical expression is true.
+    ///     Validation attribute, executed for null-only annotated field, which indicates that such a field
+    ///     is required to be non-null, when computed result of given logical expression is true.
     /// </summary>
     public sealed class RequiredIfAttribute : ExpressiveAttribute
     {
-        private const string _defaultErrorMessage = "The {0} field is required by the following logic: {1}";
+        private static string _defaultErrorMessage = "The {0} field is required by the following logic: {1}";
+
+        /// <summary>
+        ///     Gets or sets the default error message.
+        /// </summary>
+        public static string DefaultErrorMessage
+        {
+            get { return _defaultErrorMessage; }
+            set
+            {
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value), "Default error message cannot be null.");
+                _defaultErrorMessage = value;
+            }
+        }
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="RequiredIfAttribute" /> class.
         /// </summary>
         /// <param name="expression">The logical expression based on which requirement condition is computed.</param>
         public RequiredIfAttribute(string expression)
-            : base(expression, _defaultErrorMessage)
+            : base(expression, DefaultErrorMessage)
         {
             AllowEmptyStrings = false;
         }
@@ -40,8 +56,11 @@ namespace ExpressiveAnnotations.Attributes
         /// <returns>
         ///     An instance of the <see cref="T:System.ComponentModel.DataAnnotations.ValidationResult" /> class.
         /// </returns>
+        /// <exception cref="System.InvalidOperationException"></exception>
         protected override ValidationResult IsValidInternal(object value, ValidationContext validationContext)
         {
+            AssertNonValueType(value);
+
             var isEmpty = value is string && string.IsNullOrWhiteSpace((string) value);
             if (value == null || (isEmpty && !AllowEmptyStrings))
             {
@@ -53,6 +72,16 @@ namespace ExpressiveAnnotations.Attributes
             }
 
             return ValidationResult.Success;
+        }
+
+        private void AssertNonValueType(object value)
+        {
+            if (PropertyType == null)
+                return;
+
+            if (value != null && PropertyType.IsNonNullableValueType())
+                throw new InvalidOperationException(
+                    $"{nameof(RequiredIfAttribute)} has no effect when applied to a field of non-nullable value type '{PropertyType.FullName}'. Use nullable '{PropertyType.FullName}?' version instead.");
         }
     }
 }

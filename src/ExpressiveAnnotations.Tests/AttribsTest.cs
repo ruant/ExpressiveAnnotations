@@ -151,8 +151,8 @@ namespace ExpressiveAnnotations.Tests
         {
             AssertErrorMessage(
                 null,
-                "Assertion for #{Value1}# field is not satisfied by the following logic: 1!=1",
-                "The #{Value1}# field is required by the following logic: 1==1");
+                "Assertion for _{Value1}_ field is not satisfied by the following logic: 1!=1",
+                "The _{Value1}_ field is required by the following logic: 1==1");
         }
 
         [Fact]
@@ -165,15 +165,15 @@ namespace ExpressiveAnnotations.Tests
 
             AssertErrorMessage(
                 "field: {0}, expr: {1} | Value1: {Value1}{Value1:n}, Internal.Internal.Value1: {Internal.Internal.Value1}, {Internal.Internal.Value2:N}",
-                "field: #{Value1}#, expr: 1!=1 | Value1: 0_{Value1}_, Internal.Internal.Value1: 2, _{Value2}_",
-                "field: #{Value1}#, expr: 1==1 | Value1: 0_{Value1}_, Internal.Internal.Value1: 2, _{Value2}_");
+                "field: _{Value1}_, expr: 1!=1 | Value1: 0_{Value1}_, Internal.Internal.Value1: 2, _{Value2}_",
+                "field: _{Value1}_, expr: 1==1 | Value1: 0_{Value1}_, Internal.Internal.Value1: 2, _{Value2}_");
             AssertErrorMessage( // all escaped
                 "field: {{0}}, expr: {{1}} | Value1: {{Value1}}{{Value1:n}}, Internal.Internal.Value1: {{Internal.Internal.Value1}}, {{Internal.Internal.Value2:N}}",
                 "field: {0}, expr: {1} | Value1: {Value1}{Value1:n}, Internal.Internal.Value1: {Internal.Internal.Value1}, {Internal.Internal.Value2:N}");
             AssertErrorMessage(
                 "field: {{{0}}}, expr: {{{1}}} | Value1: {{{Value1}}}{{{Value1:n}}}, Internal.Internal.Value1: {{{Internal.Internal.Value1}}}, {{{Internal.Internal.Value2:N}}}",
-                "field: {#{Value1}#}, expr: {1!=1} | Value1: {0}{_{Value1}_}, Internal.Internal.Value1: {2}, {_{Value2}_}",
-                "field: {#{Value1}#}, expr: {1==1} | Value1: {0}{_{Value1}_}, Internal.Internal.Value1: {2}, {_{Value2}_}");
+                "field: {_{Value1}_}, expr: {1!=1} | Value1: {0}{_{Value1}_}, Internal.Internal.Value1: {2}, {_{Value2}_}",
+                "field: {_{Value1}_}, expr: {1==1} | Value1: {0}{_{Value1}_}, Internal.Internal.Value1: {2}, {_{Value2}_}");
             AssertErrorMessage(  // all double-escaped
                 "field: {{{{0}}}}, expr: {{{{1}}}} | Value1: {{{{Value1}}}}{{{{Value1:n}}}}, Internal.Internal.Value1: {{{{Internal.Internal.Value1}}}}, {{{{Internal.Internal.Value2:N}}}}",
                 "field: {{0}}, expr: {{1}} | Value1: {{Value1}}{{Value1:n}}, Internal.Internal.Value1: {{Internal.Internal.Value1}}, {{Internal.Internal.Value2:N}}");
@@ -208,7 +208,7 @@ namespace ExpressiveAnnotations.Tests
                 Assert.Equal("Input string was not in a correct format.", e.InnerException.Message);
 
                 IDictionary<string, Guid> errFieldsMap;
-                e = Assert.Throws<FormatException>(() => attrib.FormatErrorMessage("asd", "true", typeof(object), out errFieldsMap));
+                e = Assert.Throws<FormatException>(() => attrib.FormatErrorMessage("asd", "true", typeof (object), out errFieldsMap));
                 Assert.Equal($"Problem with error message processing. The message is following: {msg}", e.Message);
                 Assert.IsType<FormatException>(e.InnerException);
                 Assert.Equal("Input string was not in a correct format.", e.InnerException.Message);
@@ -308,6 +308,58 @@ namespace ExpressiveAnnotations.Tests
             Assert.Equal("assertthat only chosen", results.Single().ErrorMessage);
         }
 
+        [Fact]
+        public void throw_when_requirement_is_applied_to_field_of_non_nullable_value_type()
+        {
+            var model = new MisusedRequirementModel();
+            var context = new ValidationContext(model);
+            var e = Assert.Throws<ValidationException>(() => Validator.TryValidateObject(model, context, null, true));
+            Assert.Equal("RequiredIfAttribute: validation applied to Value field failed.", e.Message);
+            Assert.IsType<InvalidOperationException>(e.InnerException);
+            Assert.Equal(
+                "RequiredIfAttribute has no effect when applied to a field of non-nullable value type 'System.Int32'. Use nullable 'System.Int32?' version instead.",
+                e.InnerException.Message);
+        }
+
+        [Fact]
+        public void verify_retrieval_of_correct_member_names_when_validation_context_is_broken()
+        {
+            var model = new HackTestModel();
+            var attrib = new AssertThatAttribute("false");
+
+            // correct path:
+            Assert.Equal("Value1", GetFinalMemberName(attrib, model, 0, "Value1", "Value1"));
+            Assert.Equal("Value2", GetFinalMemberName(attrib, model, 0, "Value2", "Value 2"));
+            Assert.Equal("Value3", GetFinalMemberName(attrib, model, 0, "Value3", "Value 3"));
+
+            // first issue: no member name provided (MVC <= 4)
+            Assert.Equal("Value1", GetFinalMemberName(attrib, model, 0, null, "Value1"));
+            Assert.Equal("Value2", GetFinalMemberName(attrib, model, 0, null, "Value 2"));
+            Assert.Equal("Value3", GetFinalMemberName(attrib, model, 0, null, "Value 3"));
+
+            // second issue: member name equals to display name (WebAPI 2)
+            Assert.Equal("Value2", GetFinalMemberName(attrib, model, 0, "Value 2", "Value 2"));
+            Assert.Equal("Value3", GetFinalMemberName(attrib, model, 0, "Value 3", "Value 3"));
+        }
+
+        [Fact]
+        public void return_null_in_place_of_member_name_when_it_cannot_be_unambiguously_retrieved()
+        {
+            var model = new DisplayDuplicateModel();
+            var attrib = new AssertThatAttribute("false");
+
+            Assert.Equal(null, GetFinalMemberName(attrib, model, 0, null, "duplicate"));
+        }
+
+        private static string GetFinalMemberName(ValidationAttribute attrib, object contextModel, object mamberValue, string givenMemberName, string givenDisplayName)
+        {
+            return attrib.GetValidationResult(mamberValue, new ValidationContext(contextModel)
+            {
+                MemberName = givenMemberName,
+                DisplayName = givenDisplayName
+            })?.MemberNames.Single();
+        }
+
         private static void AssertErrorMessage(string input, string output)
         {
             AssertErrorMessage(input, output, output);
@@ -329,7 +381,7 @@ namespace ExpressiveAnnotations.Tests
                 }
             })
             {
-                MemberName = "#{Value1}#"
+                MemberName = "Value1"
             };
 
             if (input != null)
@@ -380,7 +432,7 @@ namespace ExpressiveAnnotations.Tests
         private class MsgModel
         {
             [Display(Name = "_{Value1}_")]
-            public int Value1 { get; set; }
+            public int? Value1 { get; set; }
 
             [Display(ResourceType = typeof (Resources), Name = "Value2")]
             public int Value2 { get; set; }            
@@ -412,6 +464,12 @@ namespace ExpressiveAnnotations.Tests
             public int? Value { get; set; }
         }
 
+        private class MisusedRequirementModel
+        {
+            [RequiredIf("true")]            
+            public int Value { get; set; }
+        }
+
         private class WorkModel
         {
             private const string HeavyExpression = // give the parser some work (deep dive)
@@ -421,35 +479,24 @@ namespace ExpressiveAnnotations.Tests
             [AssertThat(HeavyExpression)]
             public int? Value { get; set; }
         }
-    }
 
-    public static class Helper
-    {
-        public static IEnumerable<TSource> DistinctBy<TSource, TKey>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector)
+        private class HackTestModel
         {
-            var seenKeys = new HashSet<TKey>();
-            foreach (var element in source)
-            {
-                if (seenKeys.Add(keySelector(element)))
-                {
-                    yield return element;
-                }
-            }
+            public int? Value1 { get; set; }
+
+            [Display(Name = "Value 2")]
+            public int? Value2 { get; set; }
+
+            [DisplayName("Value 3")]
+            public int? Value3 { get; set; }
         }
 
-        public static IEnumerable<ExpressiveAttribute> CompileExpressiveAttributes(this Type type)
+        private class DisplayDuplicateModel
         {
-            var properties = type.GetProperties()
-                .Where(p => Attribute.IsDefined(p, typeof (ExpressiveAttribute)));
-            var attributes = new List<ExpressiveAttribute>();
-
-            foreach (var prop in properties)
-            {
-                var attribs = prop.GetCustomAttributes<ExpressiveAttribute>().ToList();
-                attribs.ForEach(x => x.Compile(prop.DeclaringType));
-                attributes.AddRange(attribs);
-            }
-            return attributes;
+            [Display(Name = "duplicate")]
+            public int? Value1 { get; set; }
+            [Display(Name = "duplicate")]
+            public int? Value2 { get; set; }
         }
     }
 }

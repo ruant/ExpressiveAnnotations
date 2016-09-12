@@ -36,8 +36,10 @@ namespace ExpressiveAnnotations.Analysis
                 {TokenType.XOR, @"\^"},
                 {TokenType.L_SHIFT, @"<<"},
                 {TokenType.R_SHIFT, @">>"},
-                {TokenType.L_BRACKET, @"\("},
-                {TokenType.R_BRACKET, @"\)"},
+                {TokenType.L_PAR, @"\("},
+                {TokenType.R_PAR, @"\)"},
+                {TokenType.L_BRACKET, @"\["},
+                {TokenType.R_BRACKET, @"]"},
                 {TokenType.GE, @">="},
                 {TokenType.LE, @"<="},
                 {TokenType.GT, @">"},
@@ -50,20 +52,21 @@ namespace ExpressiveAnnotations.Analysis
                 {TokenType.COLON, @":"},
                 {TokenType.COMMA, @","},
                 {TokenType.NULL, @"null"},
-                {TokenType.INC, @"\+{2}"}, // Despite the fact our language does not support ++ and -- prefix/postfix operations yet, these unary tokens are explicitly designated as illegal. We're detecting them to prevent unification which is done for consecutive plus or minus operators (e.g. + + - - +-+- => +).
+                {TokenType.INC, @"\+{2}"}, // Despite the fact our language does not support ++ and -- prefix/postfix operations, these tokens are explicitly designated as illegal. We're detecting them to prevent unification which is done for consecutive plus or minus operators (e.g. + + - - +-+- => +).
                 {TokenType.DEC, @"-{2}"},  // Unification of such unary operators breaks compatibility - such mixed 1++ + 2 operations are illegal in both C# and JavaScript (since we control C# side there is not pain here, but JavaScript would fail since we're sending raw expressions to client-side).
                 {TokenType.ADD, @"\+"},
                 {TokenType.SUB, @"-"},
                 {TokenType.MUL, @"\*"},
                 {TokenType.DIV, @"/"},
                 {TokenType.MOD, @"%"},
-                {TokenType.BIN, @"0b[0-1]+"},
+                {TokenType.BIN, @"0b[01]+"},
                 {TokenType.HEX, @"0x[0-9a-fA-F]+"},
                 {TokenType.FLOAT, @"(?:(?:[0-9]+[eE][+-]?[0-9]+)|(?:[0-9]*\.[0-9]+(?:[eE][+-]?[0-9]+)?))"}, // 1e5, 1.0, 0.3e-2
+                {TokenType.PERIOD, @"\."},
                 {TokenType.INT, @"[0-9]+"},
                 {TokenType.BOOL, @"(?:true|false)"},
                 {TokenType.STRING, @"(['])(?:\\\1|.)*?\1"}, // '1234', 'John\'s cat'
-                {TokenType.FUNC, @"[_\p{L}]+(?:(?:(?:\[[0-9]+\])?\.[_\p{L}])?[_\p{L}\p{N}]*)*(?:\[[0-9]+\])?"} // field, field.field, arr[0], func - see also http://www.fileformat.info/info/unicode/category/index.htm, https://msdn.microsoft.com/en-us/library/aa664670.aspx
+                {TokenType.ID, @"[_\p{L}]+(?:[_\p{L}\p{N}]*)"} // id - see also http://www.fileformat.info/info/unicode/category/index.htm, https://msdn.microsoft.com/en-us/library/aa664670.aspx
             };
 
             RegexMap = patterns.ToDictionary(
@@ -73,8 +76,8 @@ namespace ExpressiveAnnotations.Analysis
 
         private Token Token { get; set; }
         private Location Location { get; set; }
-        private string Expr { get; set; }
-        private string RemainingExpression { get; set; }        
+        private string ExprString { get; set; }
+        private string RemainingExprString { get; set; }        
         private IDictionary<TokenType, Regex> RegexMap { get; set; }
 
         /// <summary>
@@ -94,7 +97,7 @@ namespace ExpressiveAnnotations.Analysis
             lock (_locker)
             {
                 Location = new Location(1, 1);
-                Expr = RemainingExpression = expression;
+                ExprString = RemainingExprString = expression;
 
                 var tokens = new List<Token>();
                 while (Next())
@@ -111,29 +114,29 @@ namespace ExpressiveAnnotations.Analysis
         private bool Next()
         {
             int line, column;
-            RemainingExpression = RemainingExpression.TrimStart(out line, out column);
+            RemainingExprString = RemainingExprString.TrimStart(out line, out column);
             Location.Line += line;
             Location.Column = line > 0 ? column : Location.Column + column;
 
-            if (RemainingExpression.Length == 0)
+            if (RemainingExprString.Length == 0)
                 return false;
 
             foreach (var kvp in RegexMap)
             {
                 var regex = kvp.Value;
-                var match = regex.Match(RemainingExpression);
+                var match = regex.Match(RemainingExprString);
                 if (!match.Success) 
                     continue;
                 
                 var value = match.Value;
                 Token = new Token(kvp.Key, ConvertTokenValue(kvp.Key, value), value, Location.Clone());
 
-                RemainingExpression = RemainingExpression.Substring(value.Length, out line, out column);
+                RemainingExprString = RemainingExprString.Substring(value.Length, out line, out column);
                 Location.Line += line;
                 Location.Column = line > 0 ? column : Location.Column + column;
                 return true;
             }
-            throw new ParseErrorException("Invalid token.", Expr, Location);
+            throw new ParseErrorException("Invalid token.", ExprString, Location);
         }
 
         private object ConvertTokenValue(TokenType type, string value)
@@ -151,8 +154,8 @@ namespace ExpressiveAnnotations.Analysis
                     case TokenType.HEX:
                         return Convert.ToInt32(value.Substring(2), 16);
                     case TokenType.FLOAT:
-                        return double.Parse(value, CultureInfo.InvariantCulture); // By default, treat real numeric literals as 64-bit floating binary point values (as C#
-                    case TokenType.BOOL:                                          // does, gives better precision than float). What's more, InvariantCulture means no matter
+                        return double.Parse(value, CultureInfo.InvariantCulture); // By default, treat float numeric literals as 64-bit floating binary point values (as C#
+                    case TokenType.BOOL:                                          // does, gives better precision than float). What's more, InvariantCulture means no matter                                         
                         return bool.Parse(value);                                 // the current culture, dot is always accepted in double literal to be succesfully parsed.
                     case TokenType.STRING:
                         return ParseStringLiteral(value);
@@ -162,7 +165,7 @@ namespace ExpressiveAnnotations.Analysis
             }
             catch (OverflowException e)
             {
-                throw new ParseErrorException("Integral constant is too large.", Expr, Location, e);
+                throw new ParseErrorException("Integral constant is too large.", ExprString, Location, e);
             }
         }
 

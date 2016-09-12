@@ -61,9 +61,16 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Analysis\Expr.cs" />
+    <Compile Include="Analysis\TypeAdapter.cs" />
+    <Compile Include="Functions\FunctionsManager.cs" />
+    <Compile Include="Functions\IFunctionsManager.cs" />
+    <Compile Include="Functions\Toolchain.cs" />
+    <Compile Include="Functions\IFunctionsProvider.cs" />
     <Compile Include="Analysis\ParseErrorException.cs" />
     <Compile Include="Analysis\Location.cs" />
     <Compile Include="Analysis\TokenType.cs" />
+    <Compile Include="Analysis\TypeWall.cs" />
     <Compile Include="Attributes\AssertThatAttribute.cs" />
     <Compile Include="Analysis\Token.cs" />
     <Compile Include="Analysis\Lexer.cs" />
@@ -74,7 +81,6 @@
     <Compile Include="Helper.cs" />
     <Compile Include="Attributes\RequiredIfAttribute.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Toolchain.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

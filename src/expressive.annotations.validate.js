@@ -1,4 +1,4 @@
-/* expressive.annotations.validate.js - v2.6.6
+/* expressive.annotations.validate.js - v2.6.8
  * Client-side component of ExpresiveAnnotations - annotation-based conditional validation library.
  * https://github.com/jwaliszko/ExpressiveAnnotations
  *
@@ -98,6 +98,7 @@ var
                 if (typeof old === 'function') {
                     return old.apply(this, arguments);
                 }
+                return func.apply(this, arguments); // no exact signature match, most likely variable number of arguments is accepted
             };
         },
         registerMethods: function(model) {
@@ -116,6 +117,9 @@ var
             });
             this.addMethod('Today', function() { // return milliseconds
                 return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+            });
+            this.addMethod('ToDate', function(dateString) { // return milliseconds
+                return Date.parse(dateString);
             });
             this.addMethod('Date', function(year, month, day) { // months are 1-based, return milliseconds
                 return new Date(new Date(year, month - 1, day).setFullYear(year)).getTime();
@@ -205,6 +209,71 @@ var
                     throw guid.msg;
                 }
                 return guid;
+            });
+            this.addMethod('Min', function(values) { // accepts both, array and variable number of arguments
+                if (arguments.length === 0)
+                    throw "no arguments";
+
+                if (arguments.length === 1) {
+                    if (typeHelper.isArray(values)) {
+                        if (values.length === 0)
+                            throw "empty sequence";
+                        return Math.min.apply(null, values);
+                    }
+                }
+                return Math.min.apply(null, arguments);
+            });
+            this.addMethod('Max', function(values) { // accepts both, array and variable number of arguments
+                if (arguments.length === 0)
+                    throw "no arguments";
+
+                if (arguments.length === 1) {
+                    if (typeHelper.isArray(values)) {
+                        if (values.length === 0)
+                            throw "empty sequence";
+                        return Math.max.apply(null, values);
+                    }
+                }
+                return Math.max.apply(null, arguments);
+            });
+            this.addMethod('Sum', function(values) { // accepts both, array and variable number of arguments
+                if (arguments.length === 0)
+                    throw "no arguments";
+
+                var sum = 0, i, l;
+                if (arguments.length === 1) {
+                    if (typeHelper.isArray(values)) {
+                        if (values.length === 0)
+                            throw "empty sequence";
+                        for (i = 0, l = values.length; i < l; i++) {
+                            sum += parseFloat(values[i]);
+                        }
+                        return sum;
+                    }
+                }
+                for (i = 0, l = arguments.length; i < l; i++) {
+                    sum += parseFloat(arguments[i]);
+                }
+                return sum;
+            });
+            this.addMethod('Average', function(values) { // accepts both, array and variable number of arguments
+                if (arguments.length === 0)
+                    throw "no arguments";
+
+                var sum, i, l, arr = new Array();
+                if (arguments.length === 1) {
+                    if (typeHelper.isArray(values)) {
+                        if (values.length === 0)
+                            throw "empty sequence";
+                        sum = this.Sum(values);
+                        return sum / values.length;
+                    }
+                }
+                for (i = 0, l = arguments.length; i < l; i++) {
+                    arr.push(arguments[i]);
+                }
+                sum = this.Sum(arr);
+                return sum / arguments.length;
             });
         }
     },
@@ -372,6 +441,9 @@ var
         isGuid: function(value) {
             return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value); // basic check
         },
+        isArray: function(value) {
+            return Object.prototype.toString.call(value) === '[object Array]';
+        },
         tryParse: function(value, type, field, parser) {
             var parseFunc;
             if (parser !== null && parser !== undefined) {
@@ -535,13 +607,14 @@ var
             }
         },
         validateReferences: function(name, form) {
-            var i, field, referencedFields;
+            var i, field, referencedFields, validator;
+            validator = $(form).validate(); // get validator attached to the form
             referencedFields = this.referencesMap[name];
             if (referencedFields !== undefined && referencedFields !== null) {
                 logger.dump(typeHelper.string.format('Validation triggered for following {0} dependencies: {1}.', name, referencedFields.join(', ')));
                 i = referencedFields.length;
                 while (i--) {
-                    field = $(form).find(typeHelper.string.format(':input[data-val][name="{0}"]', referencedFields[i]));
+                    field = $(form).find(typeHelper.string.format(':input[data-val][name="{0}"]', referencedFields[i])).not(validator.settings.ignore);
                     if (field.length !== 0) {
                         field.valid();
                     }
@@ -652,7 +725,9 @@ var
         var method = typeHelper.string.format('assertthat{0}', $.trim(this));
         $.validator.addMethod(method, function(value, element, params) {
             try {
-                return computeAssertThat(value, element, params);
+                var valid = computeAssertThat(value, element, params);
+                $(element).trigger('eavalid', ['assertthat', valid, params.expression]);
+                return valid;
             } catch (ex) {
                 logger.fail(ex);
             }
@@ -663,7 +738,9 @@ var
         var method = typeHelper.string.format('requiredif{0}', $.trim(this));
         $.validator.addMethod(method, function(value, element, params) {
             try {
-                return computeRequiredIf(value, element, params);
+                var valid = computeRequiredIf(value, element, params);
+                $(element).trigger('eavalid', ['requiredif', valid, params.expression]);
+                return valid;
             } catch (ex) {
                 logger.fail(ex);
             }

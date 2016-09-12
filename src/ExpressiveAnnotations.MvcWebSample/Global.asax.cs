@@ -8,6 +8,7 @@ using ExpressiveAnnotations.Attributes;
 using ExpressiveAnnotations.MvcUnobtrusive.Providers;
 using ExpressiveAnnotations.MvcUnobtrusive.Validators;
 using ExpressiveAnnotations.MvcWebSample.Inheritance;
+using ExpressiveAnnotations.MvcWebSample.Misc;
 
 namespace ExpressiveAnnotations.MvcWebSample
 {
@@ -17,6 +18,8 @@ namespace ExpressiveAnnotations.MvcWebSample
     {
         protected void Application_Start()
         {
+            CustomToolchain.Register(); // if you need additional utility-like functions, register them here (insted of at models level)
+
             // !attributes registration done here: -------------------------------------------------------------------
 
             // required for client-side validation to be working, but redundant if built-in ea model validation provider is used (see statement below)
@@ -30,12 +33,12 @@ namespace ExpressiveAnnotations.MvcWebSample
 
             // best way - write custom provider by inheriting from ExpressiveAnnotationsModelValidatorProvider, and do it all there (keeps priorities working everywhere)
             RegisterCustomExpressiveModelValidatorProvider();
-            
+
             // !------------------------------------------------------------------------------------------------------
 
             AreaRegistration.RegisterAllAreas();
 
-            WebApiConfig.Register(GlobalConfiguration.Configuration);
+            GlobalConfiguration.Configure(WebApiConfig.Register);
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
@@ -44,9 +47,9 @@ namespace ExpressiveAnnotations.MvcWebSample
         //private static void RegisterExpressiveAttributes()
         //{
         //    DataAnnotationsModelValidatorProvider.RegisterAdapter(
-        //        typeof(RequiredIfAttribute), typeof(RequiredIfValidator));
+        //        typeof (RequiredIfAttribute), typeof (RequiredIfValidator));
         //    DataAnnotationsModelValidatorProvider.RegisterAdapter(
-        //        typeof(AssertThatAttribute), typeof(AssertThatValidator));
+        //        typeof (AssertThatAttribute), typeof (AssertThatValidator));
         //}
 
         //private static void RegisterExpressiveModelValidatorProvider()

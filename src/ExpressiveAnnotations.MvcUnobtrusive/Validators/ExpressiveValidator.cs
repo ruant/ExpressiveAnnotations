@@ -7,9 +7,13 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Threading;
 using System.Web.Mvc;
 using ExpressiveAnnotations.Analysis;
 using ExpressiveAnnotations.Attributes;
+using ExpressiveAnnotations.Functions;
+using ExpressiveAnnotations.MvcUnobtrusive.Caching;
 
 namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
 {
@@ -31,6 +35,8 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
         {
             try
             {
+                Debug.WriteLine($"[ctor entry] process: {Process.GetCurrentProcess().Id}, thread: {Thread.CurrentThread.ManagedThreadId}");
+
                 var fieldId = $"{metadata.ContainerType.FullName}.{metadata.PropertyName}".ToLowerInvariant();
                 AttributeFullId = $"{attribute.TypeId}.{fieldId}".ToLowerInvariant();
                 AttributeWeakId = $"{typeof (T).FullName}.{fieldId}".ToLowerInvariant();
@@ -38,22 +44,33 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
 
                 ResetSuffixAllocation();
 
-                var item = MapCache.GetOrAdd(AttributeFullId, _ => // map cache is based on static dictionary, set-up once for entire application instance
+                var item = MapCache<string, CacheItem>.GetOrAdd(AttributeFullId, _ => // map cache is based on static dictionary, set-up once for entire application instance
                 {                                                  // (by design, no reason to recompile once compiled expressions)
-                    var parser = new Parser();
-                    parser.RegisterMethods();
-                    parser.Parse(metadata.ContainerType, attribute.Expression);
+                    Debug.WriteLine($"[cache add] process: {Process.GetCurrentProcess().Id}, thread: {Thread.CurrentThread.ManagedThreadId}");
 
-                    FieldsMap = parser.GetFields().ToDictionary(x => x.Key, x => Helper.GetCoarseType(x.Value));
+                    var parser = new Parser();
+                    parser.RegisterToolchain();
+                    parser.Parse<bool>(metadata.ContainerType, attribute.Expression);
+
+                    var fields = parser.GetFields();
+                    FieldsMap = fields.ToDictionary(x => x.Key, x => Helper.GetCoarseType(x.Value.Type));
                     ConstsMap = parser.GetConsts();
-                    ParsersMap = metadata.ContainerType.GetProperties()
-                        .Where(p => FieldsMap.Keys.Contains(p.Name) || metadata.PropertyName == p.Name) // narrow down number of parsers sent to client
-                        .Select(p => new
+                    ParsersMap = fields
+                        .Select(kvp => new
                         {
-                            PropertyName = p.Name,
-                            ParserAttribute = p.GetAttributes<ValueParserAttribute>().SingleOrDefault()
+                            FullName = kvp.Key,
+                            ParserAttribute = ((MemberExpression) kvp.Value).Member.GetAttributes<ValueParserAttribute>().SingleOrDefault()
                         }).Where(x => x.ParserAttribute != null)
-                        .ToDictionary(x => x.PropertyName, x => x.ParserAttribute.ParserName);
+                        .ToDictionary(x => x.FullName, x => x.ParserAttribute.ParserName);
+
+                    if (!ParsersMap.ContainsKey(metadata.PropertyName))
+                    {
+                        var currentField = metadata.ContainerType
+                            .GetProperties().Single(p => metadata.PropertyName == p.Name);
+                        var valueParser = currentField.GetAttributes<ValueParserAttribute>().SingleOrDefault();
+                        if (valueParser != null)
+                            ParsersMap.Add(new KeyValuePair<string, string>(metadata.PropertyName, valueParser.ParserName));
+                    }
 
                     AssertNoNamingCollisionsAtCorrespondingSegments();
                     attribute.Compile(metadata.ContainerType); // compile expressions in attributes (to be cached for subsequent invocations)
@@ -114,15 +131,18 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
         protected IDictionary<string, object> ConstsMap { get; private set; }
 
         /// <summary>
-        ///     Attribute strong identifier - attribute type identifier concatenated with annotated field identifier.
+        ///     Gets attribute strong identifier - attribute type identifier concatenated with annotated field identifier.
         /// </summary>
         private string AttributeFullId { get; set; }
 
         /// <summary>
-        ///     Attribute partial identifier - attribute type name concatenated with annotated field identifier.
+        ///     Gets attribute partial identifier - attribute type name concatenated with annotated field identifier.
         /// </summary>
         private string AttributeWeakId { get; set; }
 
+        /// <summary>
+        ///     Gets name of the annotated field.
+        /// </summary>        
         private string FieldName { get; set; }
 
         /// <summary>
@@ -182,11 +202,7 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
         private string AllocateSuffix()
         {
             var count = RequestStorage.Get<int>(AttributeWeakId);
-            if (!RequestStorage.Get<bool>(AttributeFullId)) // attributes of the same TypeId should be filtered out at this stage from outside, so
-            {                                               // the only reason we still encounter duplicates means, they are applied in separate models (e.g. collection processing) - adapters names differentiation should be avoided
-                count++;
-                RequestStorage.Set(AttributeFullId, true);
-            }
+            count++;
             AssertAttribsQuantityAllowed(count);
             RequestStorage.Set(AttributeWeakId, count);
             return count == 1 ? string.Empty : char.ConvertFromUtf32(95 + count); // single lowercase letter from latin alphabet or an empty string
@@ -195,7 +211,6 @@ namespace ExpressiveAnnotations.MvcUnobtrusive.Validators
         private void ResetSuffixAllocation()
         {
             RequestStorage.Remove(AttributeWeakId);
-            RequestStorage.Remove(AttributeFullId);
         }
 
         private void AssertNoNamingCollisionsAtCorrespondingSegments()

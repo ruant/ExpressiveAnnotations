@@ -7,7 +7,7 @@ namespace ExpressiveAnnotations.Analysis
     /// <summary>
     ///     Token definition.
     /// </summary>
-    public sealed class Token
+    public class Token
     {
         /// <summary>
         ///     Initializes a new instance of the <see cref="Token" /> class.
@@ -43,5 +43,16 @@ namespace ExpressiveAnnotations.Analysis
         ///     Gets or sets the token location within a specified expression.
         /// </summary>
         public Location Location { get; private set; }
+
+        /// <summary>
+        ///     Generates a human-reabable string for the token instance (handy for debugging purposes).
+        /// </summary>
+        /// <returns>
+        ///     A string that represents this instance.
+        /// </returns>
+        public override string ToString()
+        {
+            return $@"""{RawValue}"" {Type} ({Location.Line}, {Location.Column})";
+        }
     }
 }

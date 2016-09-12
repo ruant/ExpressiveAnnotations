@@ -2,24 +2,39 @@
  * Copyright (c) 2014 Jarosław Waliszko
  * Licensed MIT: http://opensource.org/licenses/MIT */
 
+using System;
 using System.ComponentModel.DataAnnotations;
 
 namespace ExpressiveAnnotations.Attributes
 {
     /// <summary>
-    ///     Validation attribute, executed for non-null annotated field, which indicates that assertion given in logical expression 
-    ///     has to be satisfied, for such field to be considered as valid.
+    ///     Validation attribute, executed for non-null annotated field, which indicates that assertion given 
+    ///     in logical expression has to be satisfied, for such a field to be considered as valid.
     /// </summary>
     public sealed class AssertThatAttribute : ExpressiveAttribute
     {
-        private const string _defaultErrorMessage = "Assertion for {0} field is not satisfied by the following logic: {1}";
+        private static string _defaultErrorMessage = "Assertion for {0} field is not satisfied by the following logic: {1}";
+
+        /// <summary>
+        ///     Gets or sets the default error message.
+        /// </summary>
+        public static string DefaultErrorMessage
+        {
+            get { return _defaultErrorMessage; }
+            set
+            {
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value), "Default error message cannot be null.");
+                _defaultErrorMessage = value;
+            }
+        }
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="AssertThatAttribute" /> class.
         /// </summary>
         /// <param name="expression">The logical expression based on which assertion condition is computed.</param>
         public AssertThatAttribute(string expression)
-            : base(expression, _defaultErrorMessage)
+            : base(expression, DefaultErrorMessage)
         {
         }
 

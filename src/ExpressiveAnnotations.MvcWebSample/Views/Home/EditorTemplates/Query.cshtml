@@ -28,6 +28,17 @@
     <li>
         <pre class="code">
 [RequiredIf("GoAbroad == true")]
+</pre>
+        <pre class="action">[show attribute]</pre>
+        <div>
+            @Html.LabelFor(model => model.ID, new { @class = "inline prefix" })
+            @Html.TextBoxFor(model => model.ID)
+            @Html.ValidationMessageFor(model => model.ID)
+        </div>
+    </li>
+    <li>
+        <pre class="code">
+[RequiredIf("GoAbroad == true")]
 [AssertThat("IsDigitChain(PassportNumber)")]
 </pre>
         <pre class="action">[show attribute]</pre>
@@ -57,9 +68,9 @@
 [RequiredIf(@@"GoAbroad == true
               && (
                      (NextCountry != 'Other' && NextCountry == Country)
-                     || (Age > 24 && Age &le; 55)
+                     || (Age > 24 && 55 &ge; Age)
                  )")]
-[RequiredIf("ArrayContains(Age, EarlyYears)")]
+[RequiredIf("ArrayContains(Age, [15, 16, 17])")] @*alternative: [RequiredIf("ArrayContains(Age, EarlyYears)")]*@
 [AssertThat(@@"ReasonForTravel != 'John\'s cat named ""\\\'""\n (Backslash Quote)' && ReasonForTravel != SIMONS_CAT")]
 </pre>
         <pre class="action">[show attribute]</pre>
